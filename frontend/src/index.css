@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+@layer components {
+  .card {
+    @apply bg-white backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-200/50;
+  }
+  
+  .card-hover {
+    @apply transition-all duration-500 hover:shadow-2xl hover:scale-[1.01] hover:bg-white/95;
+  }
+  
+  .card-dark {
+    @apply bg-gray-900/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-700/50;
+  }
+  
+  .gradient-text {
+    @apply bg-gradient-to-r from-gray-900 via-gray-700 to-black bg-clip-text text-transparent;
+  }
+  
+  .gradient-text-luxury {
+    @apply bg-gradient-to-r from-gray-800 via-gray-600 to-gray-900 bg-clip-text text-transparent;
+  }
+  
+  .button-primary {
+    @apply bg-gradient-to-r from-gray-900 to-black text-white font-semibold py-3 px-8 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 focus:outline-none focus:ring-4 focus:ring-gray-400/30 border border-gray-800;
+  }
+  
+  .button-secondary {
+    @apply bg-white text-gray-900 font-semibold py-3 px-8 rounded-xl border border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-gray-200 shadow-md hover:shadow-lg;
+  }
+  
+  .button-luxury {
+    @apply bg-gradient-to-r from-gray-800 to-gray-900 text-white font-medium py-3 px-6 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 hover:from-gray-700 hover:to-gray-800 focus:outline-none focus:ring-4 focus:ring-gray-500/30;
+  }
+  
+  .input-field {
+    @apply w-full px-4 py-3 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-4 focus:ring-gray-400/30 focus:border-gray-500 transition-all duration-300 shadow-sm;
+  }
+  
+  .luxury-gradient {
+    @apply bg-gradient-to-br from-gray-100 via-white to-gray-200;
+  }
+  
+  .dark-luxury-gradient {
+    @apply bg-gradient-to-br from-gray-900 via-black to-gray-800;
+  }
+  
+  .text-luxury {
+    @apply text-gray-800;
+  }
+  
+  .text-luxury-light {
+    @apply text-gray-600;
+  }
+  
+  .text-luxury-dark {
+    @apply text-gray-900;
+  }
+}

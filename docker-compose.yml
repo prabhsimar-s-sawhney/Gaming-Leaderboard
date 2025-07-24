@@ -1,0 +1,132 @@
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: gaming_leaderboard_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: gaming_leaderboard
+      MYSQL_USER: gameuser
+      MYSQL_PASSWORD: gamepassword
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    networks:
+      - gaming_network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: gaming_leaderboard_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - gaming_network
+
+  # Django Backend
+  backend:
+    build: ./backend
+    container_name: gaming_leaderboard_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=True
+      - SECRET_KEY=your-secret-key-here-change-in-production
+      - DJANGO_SETTINGS_MODULE=gaming_leaderboard.settings
+      - DB_NAME=gaming_leaderboard
+      - DB_USER=root
+      - DB_PASSWORD=rootpassword
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - gaming_network
+
+  # Celery Worker
+  celery:
+    build: ./backend
+    container_name: gaming_leaderboard_celery
+    restart: unless-stopped
+    command: celery -A gaming_leaderboard worker --loglevel=info
+    environment:
+      - DEBUG=True
+      - SECRET_KEY=your-secret-key-here-change-in-production
+      - DJANGO_SETTINGS_MODULE=gaming_leaderboard.settings
+      - DB_NAME=gaming_leaderboard
+      - DB_USER=root
+      - DB_PASSWORD=rootpassword
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - mysql
+      - redis
+      - backend
+    networks:
+      - gaming_network
+
+  # Celery Beat (Scheduler)
+  celery-beat:
+    build: ./backend
+    container_name: gaming_leaderboard_celery_beat
+    restart: unless-stopped
+    command: celery -A gaming_leaderboard beat --loglevel=info
+    environment:
+      - DEBUG=True
+      - SECRET_KEY=your-secret-key-here-change-in-production
+      - DJANGO_SETTINGS_MODULE=gaming_leaderboard.settings
+      - DB_NAME=gaming_leaderboard
+      - DB_USER=root
+      - DB_PASSWORD=rootpassword
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - mysql
+      - redis
+      - backend
+    networks:
+      - gaming_network
+
+  # React Frontend
+  frontend:
+    build: ./frontend
+    container_name: gaming_leaderboard_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - gaming_network
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  gaming_network:
+    driver: bridge
