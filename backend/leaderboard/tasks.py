@@ -6,32 +6,44 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@shared_task
-def update_leaderboard_async(game_id):
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def update_leaderboard_async(self, game_id):
     """Asynchronously update leaderboard rankings using window functions."""
     try:
-        with connection.cursor() as cursor:
-            # Update rankings using MySQL window function
-            cursor.execute("""
-                UPDATE leaderboard l1
-                JOIN (
-                    SELECT id, 
-                           RANK() OVER (ORDER BY total_score DESC) as new_rank
-                    FROM leaderboard 
-                    WHERE game_id = %s
-                ) l2 ON l1.id = l2.id
-                SET l1.rank = l2.new_rank
-                WHERE l1.game_id = %s
-            """, [game_id, game_id])
-            
+        from django.db import connection
+        from django.db import transaction
+        
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                # Set a timeout for this specific query
+                cursor.execute("SET SESSION wait_timeout = 30")
+                
+                # Update rankings using MySQL window function
+                cursor.execute("""
+                    UPDATE leaderboard l1
+                    JOIN (
+                        SELECT id, 
+                               RANK() OVER (ORDER BY total_score DESC) as new_rank
+                        FROM leaderboard 
+                        WHERE game_id = %s
+                    ) l2 ON l1.id = l2.id
+                    SET l1.rank = l2.new_rank
+                    WHERE l1.game_id = %s
+                """, [game_id, game_id])
+                
         # Invalidate related caches
         cache.delete(f"leaderboard_top10_{game_id}")
+        cache.delete(f"ws_leaderboard_{game_id}")
         
         logger.info(f"Leaderboard rankings updated for game {game_id}")
         return True
         
     except Exception as e:
         logger.error(f"Error updating leaderboard rankings: {str(e)}")
+        # Retry the task if it failed
+        if self.request.retries < self.max_retries:
+            logger.info(f"Retrying leaderboard update for game {game_id}")
+            raise self.retry(countdown=60, exc=e)
         return False
 
 

@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'channels',
+    'django_extensions',  # Enhanced Django shell and other tools
     'leaderboard',
 ]
 
@@ -80,7 +81,12 @@ DATABASES = {
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             'charset': 'utf8mb4',
+            'connect_timeout': 10,
+            'read_timeout': 10,
+            'write_timeout': 10,
         },
+        'CONN_MAX_AGE': 60,  # Keep connections alive for 60 seconds
+        'CONN_HEALTH_CHECKS': True,  # Enable connection health checks
     }
 }
 
@@ -100,12 +106,52 @@ CACHES = {
     }
 }
 
+# Timeout configurations (integrated from timeout_settings.py)
+WEBSOCKET_SETTINGS = {
+    'CONNECT_TIMEOUT': 10,      # Seconds to wait for connection
+    'RECEIVE_TIMEOUT': 30,      # Seconds to wait for message receive
+    'SEND_TIMEOUT': 10,         # Seconds to wait for message send
+    'DISCONNECT_TIMEOUT': 5,    # Seconds to wait for graceful disconnect
+    'GROUP_TIMEOUT': 2,         # Seconds to wait for group operations
+}
+
+DATABASE_TIMEOUT_SETTINGS = {
+    'QUERY_TIMEOUT': 10,        # Seconds for individual queries
+    'TRANSACTION_TIMEOUT': 30,  # Seconds for transactions
+    'CONNECTION_TIMEOUT': 10,   # Seconds for connection establishment
+}
+
+WEBSOCKET_CACHE_SETTINGS = {
+    'LEADERBOARD_TTL': 15,      # Seconds to cache leaderboard data
+    'USER_RANK_TTL': 30,        # Seconds to cache user rank data
+    'GAME_DATA_TTL': 300,       # Seconds to cache game data
+}
+
+PERFORMANCE_SETTINGS = {
+    'LOG_SLOW_QUERIES': True,          # Log queries taking longer than threshold
+    'SLOW_QUERY_THRESHOLD': 5.0,       # Seconds threshold for slow queries
+    'LOG_WEBSOCKET_ERRORS': True,      # Log WebSocket connection errors
+    'MAX_MESSAGE_SIZE': 1024,          # Max WebSocket message size in bytes
+}
+
 # Channels
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
             'hosts': [REDIS_URL],
+            'capacity': 1500,  # Default 100
+            'expiry': 60,      # Default 60 seconds
+            'group_expiry': 86400,  # 24 hours
+            'symmetric_encryption_keys': [SECRET_KEY],
+        },
+        'OPTIONS': {
+            'connection_pool_kwargs': {
+                'max_connections': 20,
+                'socket_connect_timeout': 5,
+                'socket_timeout': 5,
+                'retry_on_timeout': True,
+            },
         },
     },
 }
@@ -179,15 +225,61 @@ if not DEBUG:
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
     'handlers': {
         'file': {
             'level': 'INFO',
             'class': 'logging.FileHandler',
             'filename': 'django.log',
+            'formatter': 'verbose',
         },
         'console': {
             'level': 'INFO',
             'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'websocket_file': {
+            'level': 'WARNING',
+            'class': 'logging.FileHandler',
+            'filename': 'websocket.log',
+            'formatter': 'verbose',
+        },
+        'performance_file': {
+            'level': 'WARNING',
+            'class': 'logging.FileHandler',
+            'filename': 'performance.log',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'leaderboard.consumers': {
+            'handlers': ['websocket_file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'leaderboard.views': {
+            'handlers': ['performance_file', 'console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'django.channels': {
+            'handlers': ['websocket_file', 'console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'gaming_leaderboard.middleware': {
+            'handlers': ['performance_file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
         },
     },
     'root': {
