@@ -78,5 +78,5 @@ temp/
 *.tmp
 
 # Documentation files (auto-generated/temporary)
-# WEBSOCKET_TIMEOUT_FIX.md
-# PERFORMANCE_OPTIMIZATIONS.md
+WEBSOCKET_TIMEOUT_FIX.md
+PERFORMANCE_OPTIMIZATIONS.md
