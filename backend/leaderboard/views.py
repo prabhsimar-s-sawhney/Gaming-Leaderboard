@@ -151,6 +151,7 @@ class SubmitScoreView(generics.CreateAPIView):
 class Top10View(generics.ListAPIView):
     """Get top 10 players for a specific game with caching."""
     serializer_class = Top10Serializer
+    throttle_classes = []  # Remove throttling for read operations
     
     def get(self, request, game_id):
         # Check cache first
@@ -216,6 +217,7 @@ class Top10View(generics.ListAPIView):
 class PlayerRankView(generics.RetrieveAPIView):
     """Get a specific player's rank for a game."""
     serializer_class = PlayerRankSerializer
+    throttle_classes = []  # Remove throttling for read operations
     
     def get(self, request, game_id, user_id):
         try:
