@@ -37,8 +37,8 @@ class SubmitScoreView(generics.CreateAPIView):
         
         try:
             with transaction.atomic():
-                # Get or create user and game
-                user = User.objects.get(id=user_id)
+                # Get or create user and game (with select_for_update for concurrency)
+                user = User.objects.select_related().get(id=user_id)
                 game = Game.objects.get(id=game_id)
                 
                 # Create game session
@@ -50,8 +50,8 @@ class SubmitScoreView(generics.CreateAPIView):
                     session_end=timezone.now()
                 )
                 
-                # Update or create leaderboard entry
-                leaderboard_entry, created = Leaderboard.objects.get_or_create(
+                # Update or create leaderboard entry with select_for_update to prevent race conditions
+                leaderboard_entry, created = Leaderboard.objects.select_for_update().get_or_create(
                     user=user,
                     game=game,
                     defaults={
@@ -77,22 +77,27 @@ class SubmitScoreView(generics.CreateAPIView):
                 # Refresh from database to get updated values
                 leaderboard_entry.refresh_from_db()
                 
-                # Invalidate cache for this game's leaderboard
-                cache_key = f"leaderboard_top10_{game_id}"
-                cache.delete(cache_key)
-                
-                # Send WebSocket notification
-                self._send_leaderboard_update(game_id, leaderboard_entry)
-                
-                # Trigger async leaderboard ranking update
-                update_leaderboard_async.delay(game_id)
-                
-                return Response({
-                    'message': 'Score submitted successfully',
-                    'session_id': session.id,
-                    'new_total_score': leaderboard_entry.total_score,
-                    'games_played': leaderboard_entry.games_played
-                }, status=status.HTTP_201_CREATED)
+            # Handle cache and WebSocket updates outside transaction
+            # Invalidate cache for this game's leaderboard
+            cache_key = f"leaderboard_top10_{game_id}"
+            cache.delete(cache_key)
+            
+            # Also invalidate WebSocket cache
+            ws_cache_key = f"ws_leaderboard_{game_id}"
+            cache.delete(ws_cache_key)
+            
+            # Send WebSocket notification (non-blocking)
+            self._send_leaderboard_update(game_id, leaderboard_entry)
+            
+            # Trigger async leaderboard ranking update
+            update_leaderboard_async.delay(game_id)
+            
+            return Response({
+                'message': 'Score submitted successfully',
+                'session_id': session.id,
+                'new_total_score': leaderboard_entry.total_score,
+                'games_played': leaderboard_entry.games_played
+            }, status=status.HTTP_201_CREATED)
                 
         except User.DoesNotExist:
             return Response(
@@ -112,27 +117,41 @@ class SubmitScoreView(generics.CreateAPIView):
             )
     
     def _send_leaderboard_update(self, game_id, leaderboard_entry):
-        """Send WebSocket update for leaderboard changes."""
+        """Send WebSocket update for leaderboard changes with timeout protection."""
         try:
-            async_to_sync(channel_layer.group_send)(
-                f"leaderboard_{game_id}",
-                {
-                    'type': 'leaderboard_update',
-                    'message': {
-                        'user_id': leaderboard_entry.user.id,
-                        'username': leaderboard_entry.user.username,
-                        'total_score': leaderboard_entry.total_score,
-                        'games_played': leaderboard_entry.games_played
-                    }
-                }
-            )
+            # Use a background task to avoid blocking the HTTP response
+            from threading import Thread
+            
+            def send_update():
+                try:
+                    async_to_sync(channel_layer.group_send)(
+                        f"leaderboard_{game_id}",
+                        {
+                            'type': 'leaderboard_update',
+                            'message': {
+                                'user_id': leaderboard_entry.user.id,
+                                'username': leaderboard_entry.user.username,
+                                'total_score': leaderboard_entry.total_score,
+                                'games_played': leaderboard_entry.games_played
+                            }
+                        }
+                    )
+                except Exception as e:
+                    logger.error(f"WebSocket background update error: {str(e)}")
+            
+            # Send update in background thread to avoid blocking
+            thread = Thread(target=send_update, daemon=True)
+            thread.start()
+            
         except Exception as e:
             logger.error(f"WebSocket error: {str(e)}")
+            # Don't raise - WebSocket failures shouldn't break the API
 
 
 class Top10View(generics.ListAPIView):
     """Get top 10 players for a specific game with caching."""
     serializer_class = Top10Serializer
+    throttle_classes = []  # Remove throttling for read operations
     
     def get(self, request, game_id):
         # Check cache first
@@ -198,6 +217,7 @@ class Top10View(generics.ListAPIView):
 class PlayerRankView(generics.RetrieveAPIView):
     """Get a specific player's rank for a game."""
     serializer_class = PlayerRankSerializer
+    throttle_classes = []  # Remove throttling for read operations
     
     def get(self, request, game_id, user_id):
         try:

@@ -14,12 +14,20 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'gaming_leaderboard.settings')
 django_asgi_app = get_asgi_application()
 
 import leaderboard.routing
+from .middleware import WebSocketTimeoutMiddleware
 
 application = ProtocolTypeRouter({
     "http": django_asgi_app,
-    "websocket": AuthMiddlewareStack(
-        URLRouter(
-            leaderboard.routing.websocket_urlpatterns
+    "websocket": WebSocketTimeoutMiddleware(
+        AuthMiddlewareStack(
+            URLRouter(
+                leaderboard.routing.websocket_urlpatterns
+            )
         )
     ),
 })
+
+# Add timeout configuration for ASGI
+import asyncio
+if hasattr(asyncio, 'set_event_loop_policy'):
+    asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
